@@ -21,7 +21,6 @@ if 'db' not in st.session_state:
 # Nút RESET ALL trên Sidebar
 if st.sidebar.button("❌ RESET ALL", use_container_width=True):
     st.session_state.db = {"bang_b_points": [], "current_raw": [], "history": []}
-    st.cache_resource.clear()
     st.rerun()
 
 @st.cache_resource
@@ -63,12 +62,11 @@ if uploaded_file and run_btn:
         raw = all_digits_list
         target = analyze_gdb_result(detected_gdb)
         
-        # 1. Tính toán Vị trí (Rank) của số vừa về TRƯỚC KHI cập nhật điểm mới
         rank_val = "N/A"
         loai_val = "N/A"
         
-        if st.session_state.db["current_raw"]:
-            # Tính bảng D hiện tại dựa trên điểm cũ
+        # 1. Tính toán Vị trí (Rank) dựa trên điểm cũ trước khi update
+        if st.session_state.db["current_raw"] and st.session_state.db["bang_b_points"]:
             old_raw = st.session_state.db["current_raw"]
             old_pts = st.session_state.db["bang_b_points"]
             df_temp = pd.DataFrame([{"S": old_raw[i], **old_pts[i]} for i in range(len(old_raw))])
@@ -91,11 +89,11 @@ if uploaded_file and run_btn:
             rank_found = df_rank[df_rank["SO"] == f"{detected_gdb:02d}"].index
             if len(rank_found) > 0:
                 rank_val = int(rank_found[0]) + 1
-                # PHÂN LOẠI A (1-70) VÀ T (71-100)
                 loai_val = "A" if rank_val <= 70 else "T"
 
         # 2. Cập nhật điểm cho Bảng B (Cuốn chiếu)
         if not st.session_state.db["current_raw"]:
+            # Lần đầu load ảnh: Khởi tạo điểm = 1
             st.session_state.db["bang_b_points"] = [{"dau":1,"duoi":1,"tong":1,"hieu":1,"cham":1} for _ in range(len(raw))]
         else:
             points = st.session_state.db["bang_b_points"]
@@ -121,7 +119,7 @@ if uploaded_file and run_btn:
         st.error("Không tìm thấy GĐB trên ảnh!")
 
 # --- GIAO DIỆN HIỂN THỊ ---
-if st.session_state.db["current_raw"]:
+if st.session_state.db["current_raw"] and st.session_state.db["bang_b_points"]:
     raw = st.session_state.db["current_raw"]
     pts = st.session_state.db["bang_b_points"]
     
@@ -139,7 +137,7 @@ if st.session_state.db["current_raw"]:
         x, y = t["dau"], t["duoi"]
         score = df_c.iloc[x]["T DAU"] + df_c.iloc[y]["T DUOI"] + df_c.iloc[t["tong"]]["T TONG"] + df_c.iloc[t["hieu"]]["T HIEU"]
         score += (df_c.iloc[x]["T CHAM"] * 2) if x==y else (df_c.iloc[x]["T CHAM"] + df_c.iloc[y]["T CHAM"])
-        dan_final.append({"SO": f"{i:02d}", "DIEM": total := score})
+        dan_final.append({"SO": f"{i:02d}", "DIEM": score})
     
     df_dan = pd.DataFrame(dan_final).sort_values("DIEM", ascending=False)
 
@@ -149,11 +147,11 @@ if st.session_state.db["current_raw"]:
     with c1:
         num1 = st.number_input("Số lượng Dàn 1:", 1, 100, 49)
         d1 = " ".join(df_dan.head(num1)["SO"].tolist())
-        st.text_area("Dàn 1 (Copy tại đây):", value=d1, height=100)
+        st.text_area("Dàn 1 (Copy tại đây):", value=d1, height=150)
     with c2:
         num2 = st.number_input("Số lượng Dàn 2:", 1, 100, 100)
         d2 = " ".join(df_dan.head(num2)["SO"].tolist())
-        st.text_area("Dàn 2 (Copy tại đây):", value=d2, height=100)
+        st.text_area("Dàn 2 (Copy tại đây):", value=d2, height=150)
 
     # --- CÁC TAB CHI TIẾT ---
     tabs = st.tabs(["🕒 Lịch sử", "🎲 Bảng B (Điểm)", "📊 Bảng A (Cơ sở)", "💾 Sao lưu"])
@@ -165,12 +163,15 @@ if st.session_state.db["current_raw"]:
     
     with tabs[1]:
         st.subheader("Bảng B - Chi tiết điểm vị trí")
-        st.dataframe(df_b, use_container_width=True)
+        st.dataframe(df_b.rename(columns={"dau":"DIEM DAU","duoi":"DIEM DUOI","tong":"DIEM TONG","hieu":"DIEM HIEU","cham":"DIEM CHAM"}), use_container_width=True)
 
     with tabs[2]:
-        st.subheader("Bảng A - Dữ liệu gốc 107 vị trí")
-        st.dataframe(pd.DataFrame([{"Vị trí": i+1, "Số về": raw[i]} for i in range(len(raw))]).T)
+        st.subheader("Bảng A - Dữ liệu gốc các vị trí")
+        df_a_display = pd.DataFrame([{"Vị trí": i+1, "Số về": raw[i]} for i in range(len(raw))])
+        st.dataframe(df_a_display, use_container_width=True)
 
     with tabs[3]:
         st.subheader("Quản lý dữ liệu")
         st.download_button("💾 TẢI FILE DỮ LIỆU (.JSON)", json.dumps(st.session_state.db), "loto_data.json", use_container_width=True)
+else:
+    st.info("Vui lòng tải ảnh kết quả đầu tiên để khởi tạo dữ liệu.")
