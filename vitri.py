@@ -5,7 +5,7 @@ import json
 import numpy as np
 from PIL import Image
 
-# --- CẤU HÌNH HẰNG SỐ HIỆU ---
+# --- HẰNG SỐ HIỆU QUY ƯỚC (Dành cho việc phân tích GĐB và Bảng D) ---
 HIEU_CHART = {0: [0,11,22,33,44,55,66,77,88,99], 1: [9,10,21,32,43,54,65,76,87,98],
               2: [8,19,20,31,42,53,64,75,86,97], 3: [7,18,29,30,41,52,63,74,85,96],
               4: [6,17,28,39,40,51,62,73,84,95], 5: [5,16,27,38,49,50,61,72,83,94],
@@ -14,149 +14,145 @@ HIEU_CHART = {0: [0,11,22,33,44,55,66,77,88,99], 1: [9,10,21,32,43,54,65,76,87,9
 
 st.set_page_config(page_title="Hệ thống Thống kê Lô học Pro", layout="wide")
 
-# --- KHỞI TẠO SESSION STATE ---
 if 'db' not in st.session_state:
-    st.session_state.db = {"bang_b": [], "current_raw": []}
+    st.session_state.db = {"bang_b_points": [], "current_raw": []}
 
 @st.cache_resource
 def load_ocr():
     return easyocr.Reader(['en'])
 
-reader = load_ocr()
-
-def get_hieu(num):
-    for h, nums in HIEU_CHART.items():
-        if num in nums: return h
-    return 0
-
-def analyze_gdb(num):
+def analyze_gdb_result(num):
     s = f"{num:02d}"
     x, y = int(s[0]), int(s[1])
-    return {
-        "dau": x, "duoi": y, "tong": (x + y) % 10, 
-        "hieu": get_hieu(num), "cham": [x, y]
-    }
+    h_val = 0
+    for h, nums in HIEU_CHART.items():
+        if num in nums: h_val = h; break
+    return {"dau": x, "duoi": y, "tong": (x + y) % 10, "hieu": h_val, "cham": [x, y]}
 
 # --- SIDEBAR ---
 with st.sidebar:
     st.header("Cấu hình dữ liệu")
     uploaded_file = st.file_uploader("1. Tải ảnh kết quả", type=["png", "jpg", "jpeg"])
-    gdb_input = st.number_input("2. Nhập 2 số cuối GĐB hôm nay", min_value=0, max_value=99, value=0)
-    
+    gdb_input = st.number_input("2. Nhập 2 số cuối GĐB hôm nay", 0, 99, 0)
     uploaded_json = st.file_uploader("Nạp dữ liệu cũ (JSON)", type=["json"])
     if uploaded_json:
         st.session_state.db = json.load(uploaded_json)
-    
-    num_display = st.slider("Số lượng dàn số hiển thị", 10, 100, 20)
-    run_btn = st.button("Phân tích & Cập nhật")
+    num_dan = st.slider("Số lượng dàn số", 10, 100, 20)
+    run_btn = st.button("Phân tích & Cập nhật điểm")
 
-# --- XỬ LÝ DỮ LIỆU ---
+# --- XỬ LÝ LOGIC ---
 if uploaded_file and run_btn:
+    reader = load_ocr()
     image = Image.open(uploaded_file)
     results = reader.readtext(np.array(image), detail=0)
-    raw_text = "".join([res for res in results if res.isdigit()])
-    raw = [int(d) for d in raw_text]
+    # Lấy toàn bộ chữ số từ ảnh
+    raw = [int(d) for d in "".join([res for res in results if res.isdigit()])]
     st.session_state.db["current_raw"] = raw
-
-    target = analyze_gdb(gdb_input)
     
-    # Khởi tạo Bảng B (Bảng lưu điểm tích lũy)
-    if not st.session_state.db["bang_b"] or len(st.session_state.db["bang_b"]) != len(raw):
-        st.session_state.db["bang_b"] = [{"dau":0,"duoi":0,"tong":0,"hieu":0,"cham":0} for _ in range(len(raw))]
+    target = analyze_gdb_result(gdb_input)
+    
+    # Khởi tạo điểm nếu chưa có hoặc số lượng vị trí thay đổi
+    if not st.session_state.db.get("bang_b_points") or len(st.session_state.db["bang_b_points"]) != len(raw):
+        st.session_state.db["bang_b_points"] = [{"dau":0,"duoi":0,"tong":0,"hieu":0,"cham":0} for _ in range(len(raw))]
 
-    # Cập nhật điểm (Nguyên tắc Reset về 0 hoặc +1)
+    # Cập nhật điểm Bảng B (So sánh SO VE của Bảng A với các thuộc tính GĐB hôm nay)
     for i in range(len(raw)):
         val = raw[i]
-        p = st.session_state.db["bang_b"][i]
+        p = st.session_state.db["bang_b_points"][i]
         p["dau"] = 0 if val == target["dau"] else p["dau"] + 1
         p["duoi"] = 0 if val == target["duoi"] else p["duoi"] + 1
         p["tong"] = 0 if val == target["tong"] else p["tong"] + 1
         p["hieu"] = 0 if val == target["hieu"] else p["hieu"] + 1
         p["cham"] = 0 if val in target["cham"] else p["cham"] + 1
-    
-    st.success("Đã cập nhật dữ liệu mới!")
+    st.success(f"Đã cập nhật dữ liệu cho {len(raw)} vị trí!")
 
 # --- HIỂN THỊ KẾT QUẢ ---
 raw = st.session_state.db.get("current_raw", [])
-if raw and st.session_state.db["bang_b"]:
-    # 1. TÍNH TOÁN CÁC BẢNG TRƯỚC KHI HIỂN THỊ
+if raw:
+    # 1. TÍNH TOÁN DỮ LIỆU CÁC BẢNG
     
-    # Bảng A & B (Kết hợp hiển thị)
-    list_a_b = []
+    # Chuẩn bị Bảng B & Bảng A
+    list_b = []
     for i in range(len(raw)):
-        val = raw[i]
-        list_a_b.append({
+        list_b.append({
             "VI TRI": i + 1,
-            "SO VE": val,
-            "DAU": val, "DUOI": val, "TONG": (val+val)%10, "HIEU": get_hieu(val), "CHAM": val, # Cơ sở tính toán (Bảng A)
-            "DIEM DAU": st.session_state.db["bang_b"][i]["dau"],
-            "DIEM DUOI": st.session_state.db["bang_b"][i]["duoi"],
-            "DIEM TONG": st.session_state.db["bang_b"][i]["tong"],
-            "DIEM HIEU": st.session_state.db["bang_b"][i]["hieu"],
-            "DIEM CHAM": st.session_state.db["bang_b"][i]["cham"],
+            "SO VE": raw[i],
+            **st.session_state.db["bang_b_points"][i]
         })
-    df_ab = pd.DataFrame(list_a_b)
+    df_b_full = pd.DataFrame(list_b)
 
-    # Bảng C (Tổng điểm theo số 0-9)
+    # Tính Bảng C (Gom điểm từ Bảng B theo SO VE 0-9)
     list_c = []
     for i in range(10):
-        # Lọc những vị trí có SO VE là i
-        mask = df_ab["SO VE"] == i
+        m = df_b_full[df_b_full["SO VE"] == i]
         list_c.append({
             "SO": i,
-            "T DAU": df_ab.loc[mask, "DIEM DAU"].sum(),
-            "T DUOI": df_ab.loc[mask, "DIEM DUOI"].sum(),
-            "T TONG": df_ab.loc[mask, "DIEM TONG"].sum(),
-            "T HIEU": df_ab.loc[mask, "DIEM HIEU"].sum(),
-            "T CHAM": df_ab.loc[mask, "DIEM CHAM"].sum(),
+            "T DAU": m["dau"].sum(), 
+            "T DUOI": m["duoi"].sum(),
+            "T TONG": m["tong"].sum(), 
+            "T HIEU": m["hieu"].sum(), 
+            "T CHAM": m["cham"].sum()
         })
     df_c = pd.DataFrame(list_c)
 
-    # Bảng D & Dàn số
-    list_d_flat = []
+    # Tính Bảng D & Dàn số
+    dan_list = []
+    matrix_data = np.zeros((10,10))
     for i in range(100):
-        t = analyze_gdb(i)
+        t = analyze_gdb_result(i)
         x, y = t["dau"], t["duoi"]
-        score_dau = df_c.iloc[x]["T DAU"]
-        score_duoi = df_c.iloc[y]["T DUOI"]
-        score_tong = df_c.iloc[t["tong"]]["T TONG"]
-        score_hieu = df_c.iloc[t["hieu"]]["T HIEU"]
         
-        if x == y: # Kép bằng
-            score_cham = df_c.iloc[x]["T CHAM"] * 2
+        # Lấy dữ liệu từ Bảng C
+        s_dau = df_c.iloc[x]["T DAU"]
+        s_duoi = df_c.iloc[y]["T DUOI"]
+        s_tong = df_c.iloc[t["tong"]]["T TONG"]
+        s_hieu = df_c.iloc[t["hieu"]]["T HIEU"]
+        
+        # Quy tắc chạm: kép nhân đôi
+        if x == y:
+            s_cham = df_c.iloc[x]["T CHAM"] * 2
         else:
-            score_cham = df_c.iloc[x]["T CHAM"] + df_c.iloc[y]["T CHAM"]
+            s_cham = df_c.iloc[x]["T CHAM"] + df_c.iloc[y]["T CHAM"]
             
-        total_score = score_dau + score_duoi + score_tong + score_hieu + score_cham
-        list_d_flat.append({"SO": f"{i:02d}", "DIEM": total_score, "x": x, "y": y})
+        total = s_dau + s_duoi + s_tong + s_hieu + s_cham
+        dan_list.append({"SO": f"{i:02d}", "DIEM": total})
+        matrix_data[x, y] = total
 
-    # --- GIAO DIỆN HIỂN THỊ ---
+    # 2. GIAO DIỆN HIỂN THỊ (SẮP XẾP THEO YÊU CẦU)
     
-    # Phần Dàn Số (Ưu tiên đầu tiên)
-    st.subheader(f"🔥 Dàn số tiềm năng (Top {num_display})")
-    df_dan = pd.DataFrame(list_d_flat).sort_values(by="DIEM", ascending=False).head(num_display)
-    st.info(" ".join(df_dan["SO"].tolist()))
+    # Bảng Dàn Số (Kết quả cuối cùng hiển thị đầu tiên)
+    st.subheader(f"🔥 Dàn số tiềm năng (Top {num_dan} từ cao đến thấp)")
+    top_dan = pd.DataFrame(dan_list).sort_values("DIEM", ascending=False).head(num_dan)
+    st.info(" ".join(top_dan["SO"].tolist()))
 
-    tabs = st.tabs(["Bảng A (Cơ sở)", "Bảng B (Điểm vị trí)", "Bảng C (Tổng kết số)", "Bảng D (Ma trận 100 số)"])
+    # Các Tab chi tiết
+    t1, t2, t3, t4 = st.tabs(["📊 Bảng A (Cơ sở)", "📈 Bảng B (Điểm vị trí)", "🗂️ Bảng C (Tổng kết)", "🔢 Bảng D (Ma trận)"])
+    
+    with t1:
+        # Bảng A: Toàn bộ cột thuộc tính giống SO VE
+        data_a = []
+        for i in range(len(raw)):
+            v = raw[i]
+            data_a.append({"VI TRI": i+1, "SO VE": v, "DAU": v, "DUOI": v, "TONG": v, "HIEU": v, "CHAM": v})
+        st.dataframe(pd.DataFrame(data_a), use_container_width=True)
 
-    with tabs[0]:
-        st.dataframe(df_ab[["VI TRI", "SO VE", "DAU", "DUOI", "TONG", "HIEU", "CHAM"]], use_container_width=True)
+    with t2:
+        # Bảng B: Hiển thị điểm tích lũy
+        df_b_display = df_b_full.rename(columns={
+            "dau": "DIEM DAU", "duoi": "DIEM DUOI", "tong": "DIEM TONG", "hieu": "DIEM HIEU", "cham": "DIEM CHAM"
+        })
+        st.dataframe(df_b_display, use_container_width=True)
 
-    with tabs[1]:
-        st.dataframe(df_ab[["VI TRI", "SO VE", "DIEM DAU", "DIEM DUOI", "DIEM TONG", "DIEM HIEU", "DIEM CHAM"]], use_container_width=True)
-
-    with tabs[2]:
+    with t3:
         st.table(df_c)
 
-    with tabs[3]:
-        # Tạo ma trận D
-        matrix_d = np.zeros((10, 10))
-        for item in list_d_flat:
-            matrix_d[item['x'], item['y']] = item['DIEM']
-        df_matrix = pd.DataFrame(matrix_d, index=[f"Đầu {i}" for i in range(10)], columns=[f"Đuôi {i}" for i in range(10)])
-        st.dataframe(df_matrix.style.background_gradient(cmap='YlOrRd'), use_container_width=True)
+    with t4:
+        df_matrix = pd.DataFrame(matrix_data, 
+                                 index=[f"Đầu {i}" for i in range(10)], 
+                                 columns=[f"Đuôi {i}" for i in range(10)])
+        st.dataframe(df_matrix, use_container_width=True)
 
-    # Nút lưu JSON
-    st.download_button("Lưu dữ liệu máy tính (.json)", json.dumps(st.session_state.db), "loto_data.json")
+    st.divider()
+    st.download_button("💾 Lưu dữ liệu vào máy (.json)", json.dumps(st.session_state.db), "loto_data.json")
 else:
-    st.warning("Vui lòng nạp dữ liệu ảnh hoặc file JSON cũ.")
+    st.warning("Vui lòng tải ảnh kết quả lên để bắt đầu.")
