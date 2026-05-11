@@ -1,4 +1,4 @@
 streamlit
 easyocr
 pandas
-opencv-python-headless
+numpy
