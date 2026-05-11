@@ -63,6 +63,7 @@ if uploaded_file and run_btn:
         target = analyze_gdb_result(detected_gdb)
         rank_val, loai_val = "N/A", "N/A"
         
+        # Tính Rank trước khi update điểm
         if st.session_state.db["current_raw"] and st.session_state.db["bang_b_points"]:
             old_raw, old_pts = st.session_state.db["current_raw"], st.session_state.db["bang_b_points"]
             df_temp = pd.DataFrame([{"S": old_raw[i], **old_pts[i]} for i in range(len(old_raw))])
@@ -99,9 +100,9 @@ if uploaded_file and run_btn:
         st.session_state.db["current_raw"] = raw
         st.success(f"Đã cập nhật GĐB: {detected_gdb:02d}")
     else:
-        st.error("Không tìm thấy GĐB!")
+        st.error("Không nhận diện được GĐB!")
 
-# --- HIỂN THỊ ---
+# --- HIỂN THỊ KẾT QUẢ ---
 if st.session_state.db["current_raw"] and st.session_state.db["bang_b_points"]:
     raw, pts = st.session_state.db["current_raw"], st.session_state.db["bang_b_points"]
     df_b = pd.DataFrame([{"SO VE": raw[i], **pts[i]} for i in range(len(raw))])
@@ -126,10 +127,10 @@ if st.session_state.db["current_raw"] and st.session_state.db["bang_b_points"]:
     c1, c2 = st.columns(2)
     with c1:
         num1 = st.number_input("Số quân Dàn 1:", 1, 100, 49)
-        st.text_area("Dàn 1:", value=" ".join(df_dan.head(num1)["SO"].tolist()), height=120)
+        st.text_area("Dàn 1 (Copy):", value=" ".join(df_dan.head(num1)["SO"].tolist()), height=120)
     with c2:
         num2 = st.number_input("Số quân Dàn 2:", 1, 100, 100)
-        st.text_area("Dàn 2:", value=" ".join(df_dan.head(num2)["SO"].tolist()), height=120)
+        st.text_area("Dàn 2 (Copy):", value=" ".join(df_dan.head(num2)["SO"].tolist()), height=120)
 
     # --- TỔ CHỨC TAB ---
     tabs = st.tabs(["🕒 Lịch sử", "🎲 Bảng B (Điểm)", "🗂️ Bảng C (Gom)", "🔢 Bảng D (Ma trận)", "📊 Bảng A (Cơ sở)"])
@@ -141,18 +142,18 @@ if st.session_state.db["current_raw"] and st.session_state.db["bang_b_points"]:
         st.dataframe(df_b.rename(columns={"dau":"DIEM DAU","duoi":"DIEM DUOI","tong":"DIEM TONG","hieu":"DIEM HIEU","cham":"DIEM CHAM"}), use_container_width=True)
 
     with tabs[2]:
-        st.subheader("Bảng C: Tổng điểm gom theo số 0-9")
+        st.subheader("Bảng C: Tổng điểm gom từ bảng B (0-9)")
         st.table(df_c)
 
     with tabs[3]:
         st.subheader("Bảng D: Ma trận điểm 100 số")
         df_matrix = pd.DataFrame(matrix_data, index=[f"Đầu {i}" for i in range(10)], columns=[f"Đuôi {i}" for i in range(10)])
-        st.dataframe(df_matrix.style.background_gradient(cmap='YlGn'), use_container_width=True)
+        st.dataframe(df_matrix, use_container_width=True) # Đã bỏ background_gradient để tránh lỗi
 
     with tabs[4]:
-        with st.expander("Nhấn để xem chi tiết 107 vị trí gốc (Bảng A)"):
-            st.dataframe(pd.DataFrame([{"Vị trí": i+1, "Số về": raw[i], "Dau":raw[i], "Duoi":raw[i], "Tong":raw[i], "Hieu":raw[i], "Cham":raw[i]} for i in range(len(raw))]), use_container_width=True)
+        with st.expander("Nhấn để xem chi tiết 107 vị trí (Bảng A)"):
+            st.dataframe(pd.DataFrame([{"VT": i+1, "Số": raw[i], "D":raw[i], "Đ":raw[i], "T":raw[i], "H":raw[i], "C":raw[i]} for i in range(len(raw))]), use_container_width=True)
 
     st.sidebar.download_button("💾 SAO LƯU", json.dumps(st.session_state.db), "data.json", use_container_width=True)
 else:
-    st.info("Chờ nạp ảnh...")
+    st.info("Chờ nạp ảnh kết quả đầu tiên...")
