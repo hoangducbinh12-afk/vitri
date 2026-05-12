@@ -12,7 +12,7 @@ HIEU_CHART = {0: [0,11,22,33,44,55,66,77,88,99], 1: [9,10,21,32,43,54,65,76,87,9
               6: [4,15,26,37,48,59,60,71,82,93], 7: [3,14,25,36,47,58,69,70,81,92],
               8: [2,13,24,35,46,57,68,79,80,91], 9: [1,12,23,34,45,56,67,78,89,90]}
 
-st.set_page_config(page_title="Hệ thống Thống kê Lô học Pro", layout="wide")
+st.set_page_config(page_title="ĐIỂM TỔNG - VỊ TRÍ", layout="wide")
 
 # --- KHỞI TẠO BỘ NHỚ ---
 if 'db' not in st.session_state:
@@ -78,11 +78,14 @@ if uploaded_file and run_btn:
                 score = df_c_temp.iloc[t["dau"]]["dau"] + df_c_temp.iloc[t["duoi"]]["duoi"] + df_c_temp.iloc[t["tong"]]["tong"] + df_c_temp.iloc[t["hieu"]]["hieu"]
                 score += (df_c_temp.iloc[t["dau"]]["cham"] * 2) if t["dau"]==t["duoi"] else (df_c_temp.iloc[t["dau"]]["cham"] + df_c_temp.iloc[t["duoi"]]["cham"])
                 dan_scores.append({"SO": f"{i:02d}", "DIEM": score})
-            df_rank = pd.DataFrame(dan_scores).sort_values("DIEM", ascending=False).reset_index(drop=True)
+            
+            # ĐỔI THÀNH SẮP XẾP TỪ THẤP ĐẾN CAO ĐỂ TÍNH VỊ TRÍ MỚI
+            df_rank = pd.DataFrame(dan_scores).sort_values("DIEM", ascending=True).reset_index(drop=True)
             rank_found = df_rank[df_rank["SO"] == f"{detected_gdb:02d}"].index
             if len(rank_found) > 0:
                 rank_val = int(rank_found[0]) + 1
-                loai_val = "A" if rank_val <= 70 else "T"
+                # LOGIC MỚI: 1-79 là A, 80-100 là T
+                loai_val = "A" if rank_val <= 79 else "T"
 
         if not st.session_state.db["current_raw"]:
             st.session_state.db["bang_b_points"] = [{"dau":1,"duoi":1,"tong":1,"hieu":1,"cham":1} for _ in range(len(raw))]
@@ -121,9 +124,10 @@ if st.session_state.db["current_raw"] and st.session_state.db["bang_b_points"]:
         dan_final.append({"SO": f"{i:02d}", "DIEM": score})
         matrix_data[t["dau"], t["duoi"]] = score
     
-    df_dan = pd.DataFrame(dan_final).sort_values("DIEM", ascending=False)
+    # THAY ĐỔI: Sắp xếp DIEM tăng dần (Thấp đến Cao)
+    df_dan = pd.DataFrame(dan_final).sort_values("DIEM", ascending=True)
 
-    st.write("### 🎯 DÀN SỐ TỔNG LỰC")
+    st.write("### 🎯 DÀN SỐ TỔNG LỰC (Từ Thấp đến Cao)")
     c1, c2 = st.columns(2)
     with c1:
         num1 = st.number_input("Số quân Dàn 1:", 1, 100, 49)
@@ -148,7 +152,7 @@ if st.session_state.db["current_raw"] and st.session_state.db["bang_b_points"]:
     with tabs[3]:
         st.subheader("Bảng D: Ma trận điểm 100 số")
         df_matrix = pd.DataFrame(matrix_data, index=[f"Đầu {i}" for i in range(10)], columns=[f"Đuôi {i}" for i in range(10)])
-        st.dataframe(df_matrix, use_container_width=True) # Đã bỏ background_gradient để tránh lỗi
+        st.dataframe(df_matrix, use_container_width=True)
 
     with tabs[4]:
         with st.expander("Nhấn để xem chi tiết 107 vị trí (Bảng A)"):
